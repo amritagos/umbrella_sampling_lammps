@@ -1,0 +1,38 @@
+# ------------------------------------------------------------------------------
+### Implicit water potential with explicit ions ###
+pair_style  hybrid/overlay wf/cut 10.0 coul/diel 10.0 gauss/cut 10.0 
+
+bond_style      harmonic
+angle_style     harmonic
+dielectric 78.0 # For explicit water, this is 1.0, but for implicit bulk water it must be set
+
+# Na-Na
+pair_coeff      1 1 wf/cut 0.0006063 4.886073 1 2 14.658219 # Na-Na
+pair_coeff      1 1 coul/diel 78.0 3.05855 0.67558 # Na-Na
+pair_coeff      1 1 gauss/cut 0.827228 4.93379 0.48554 # Na-Na
+
+# Cl-Cl
+pair_coeff      2 2 wf/cut 0.000282 7.20141 1 2 21.60423 # Cl-Cl
+pair_coeff      2 2 coul/diel 78.0 4.32429 0.72127 # Cl-Cl
+pair_coeff      2 2 gauss/cut 0.5414004 6.1399161 0.455274 # Cl-Cl
+
+# Na-Cl
+pair_coeff      1 2 wf/cut 0.56166 2.80667 1 2 8.42001 # Na-Cl 
+pair_coeff      1 2 coul/diel 78.0 3.65596 5.13361 # Na-Cl
+pair_coeff      1 2 gauss/cut 3.24785 3.20867 0.51519 # Na-Cl
+
+# -------------------------------------------------------------------------------
+# create groups ###
+group na        type 1
+group cl        type 2
+group ions      type 1 2 
+
+# Masses
+mass            1 22.9898  # na
+mass            2 35.453 # cl
+
+## set charges - beside manually ###
+set group na charge    1.0
+set group cl charge    -1.0
+
+###########################################################################################################################################

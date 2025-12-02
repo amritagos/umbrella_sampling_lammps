@@ -1,0 +1,181 @@
+shell mkdir dump         # Folder for production dump files
+shell mkdir restart      # Folder for restart files from production runs
+shell mkdir logfile      # Folder for log files
+shell mkdir output       # Folder for production dump files
+
+{% if params.nvt_equil == 1 or params.nvt == 1 or params.viscosity_production == 1 %}
+variable    t equal   {{params.t}}       # Temperature (K)
+{% endif %}
+{% if params.npt_equil == 1 or params.npt == 1 %}
+variable    press equal {{params.press}}   	# pressure (atm)
+{% endif %}
+
+# Simulation setup
+units       real    
+atom_style  full
+boundary    p p p
+
+read_data   {{params.in_data}} nocoeff
+
+{% include input.potential_file %}
+
+{% if params.tail_correction == 1 %}
+# Long-range dispersion corrections for energy and pressure
+# Can affect constant-pressure dynamics
+pair_modify     tail yes
+{% endif %}
+
+dielectric 78.0
+
+neighbor       2.0 bin
+{% if params.neigh_modify ==1 %}
+neigh_modify   every 2 delay 10 check no
+{% endif %}
+
+reset_timestep   0 
+
+{% if params.minimize == 1 %}
+min_style       sd
+minimize        0.0 0.0 1000 400000 ## 1000 steps
+timestep 0.001 # set to a small timestep to avoid large forces at 0 K ?
+thermo         100
+log            {{params.log_minimize}}
+min_style       cg # 
+minimize        0 0.0023 100000 400000 ## 0.0001eV/A = 0.0023061 kcal/(mol-A)
+{% endif %}
+
+{% if params.simulated_annealing == 1 %}
+# Simulated annealing
+# Heat it up first 
+reset_timestep    0
+# Make sure there is no overall drift velocity 
+velocity   all create {{params.anneal_highest_temp}} 4928459
+velocity   all zero linear
+log          {{params.log_anneal}}
+thermo_style    custom step temp pe etotal vol lx press 
+thermo_modify flush yes 
+fix            1 all nvt temp {{params.anneal_highest_temp}} {{params.anneal_highest_temp}} $(100.0*dt) tchain 10
+timestep       1.0        # Timestep 1 fs
+thermo         1000
+run            {{params.n_iter_anneal_heating}} 
+unfix          1
+# ------------------------------------------
+# Annealing process
+# ------------------------------------------
+reset_timestep    0
+thermo_style    custom step temp pe etotal vol lx press 
+thermo_modify flush yes 
+fix            2 all nve 
+fix            3 all viscous {{params.viscous_gamma}} # 0.01 is good for 1 ns long run
+timestep       {{params.anneal_timestep}}        # Timestep 1 fs
+thermo         1000
+run            {{params.n_iter_anneal_cooling}} 
+unfix          2
+unfix          3
+# ------------------------------------------
+{% endif %}
+
+{% if params.nvt_equil == 1 %}
+# Short NVT run
+# ------------------------------------------
+# Make sure there is no overall drift velocity 
+velocity   all create $t 4928459
+velocity   all zero linear
+reset_timestep    0
+log          {{params.log_nvt_equil}}
+thermo_style    custom step temp pe etotal vol lx press 
+thermo_modify flush yes 
+fix            1 all nvt temp $t $t $(100.0*dt) tchain 10
+timestep       1.0        # Timestep 1 fs
+thermo         1000
+run            {{params.n_iter_nvt_equil}} 
+unfix          1
+# ------------------------------------------
+{% endif %}
+
+{% if params.npt_equil == 1 %}
+# Short NPT run
+# ------------------------------------------
+# Make sure there is no overall drift velocity 
+velocity   all create $t 4928459
+velocity   all zero linear
+reset_timestep    0
+log          {{params.log_npt_equil}}
+thermo_style    custom step temp pe etotal vol lx press density
+thermo_modify flush yes 
+fix            1 all npt temp $t $t $(100.0*dt) iso ${press} ${press} $(1000.0*dt) tchain 10
+timestep       1.0        # Timestep 1 fs
+thermo         1000
+run            {{params.n_iter_npt_equil}} 
+unfix          1
+# ------------------------------------------
+{% endif %}
+
+{% if params.nvt == 1 %}
+# Production run
+reset_timestep 0
+log             {{params.log}}
+thermo_style    custom step time temp pe etotal vol lx press density fmax fnorm 
+thermo_modify flush yes 
+fix            1 all nvt temp $t $t $({{params.tdamp}}*dt) tchain 10 
+timestep       {{params.dt}}
+thermo         {{params.thermo_freq}}
+{% if params.dump_group %}
+dump           1 {{params.dump_group}} custom {{params.dump_freq}} {{params.dumpfile}} id mol type x y z 
+{% else %}
+dump           1 all custom {{params.dump_freq}} {{params.dumpfile}} id mol type x y z 
+{% endif %}
+dump_modify    1 sort id 
+restart        50000 restart/x.r.1 restart/x.r.2
+restart        {{params.restart_freq}} output/x.r
+run            {{params.n_iter}}
+unfix          1
+undump         1
+{% endif %}
+
+{% if params.npt == 1 %}
+# Production run
+reset_timestep 0
+log             {{params.log}}
+thermo_style    custom step time temp pe etotal vol lx press density fmax fnorm 
+thermo_modify flush yes 
+fix            1 all npt temp $t $t $({{params.tdamp}}*dt) iso ${press} ${press} $({{params.pdamp}}*dt) tchain 10 
+timestep       {{params.dt}}
+thermo         {{params.thermo_freq}}
+{% if params.dump_group %}
+dump           1 {{params.dump_group}} custom {{params.dump_freq}} {{params.dumpfile}} id mol type x y z 
+{% else %}
+dump           1 all custom {{params.dump_freq}} {{params.dumpfile}} id mol type x y z 
+{% endif %}
+dump_modify    1 sort id 
+restart        50000 restart/x.r.1 restart/x.r.2
+restart        {{params.restart_freq}} output/x.r
+run            {{params.n_iter}}
+unfix          1
+undump         1
+{% endif %}
+
+{% if params.nve == 1 %}
+# Production run
+reset_timestep 0
+log             {{params.log}}
+thermo_style    custom step time temp pe etotal vol lx press density fmax fnorm 
+thermo_modify flush yes 
+fix            1 all nve
+timestep       {{params.dt}}
+thermo         {{params.thermo_freq}}
+{% if params.dump_group_name %}
+dump           1 {{params.dump_group}} custom {{params.dump_freq}} {{params.dumpfile}} id mol type x y z 
+{% else %}
+dump           1 all custom {{params.dump_freq}} {{params.dumpfile}} id mol type x y z 
+{% endif %}
+dump_modify    1 sort id 
+restart        50000 restart/x.r.1 restart/x.r.2
+restart        {{params.restart_freq}} output/x.r
+run            {{params.n_iter}}
+unfix          1
+undump         1
+{% endif %}
+# ---------------------------------------------
+
+write_data {{params.out_data}}

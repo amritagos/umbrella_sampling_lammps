@@ -1,0 +1,234 @@
+shell mkdir dump         # Folder for production dump files
+shell mkdir restart      # Folder for restart files from production runs
+shell mkdir logfile      # Folder for log files
+shell mkdir output       # Folder for production dump files
+
+{% if params.nvt_equil == 1 or params.nvt == 1 or params.viscosity_production == 1 %}
+variable    t equal   {{params.t}}       # Temperature (K)
+{% endif %}
+{% if params.npt_equil == 1 or params.npt == 1 %}
+variable    press equal {{params.press}}   	# pressure (atm)
+{% endif %}
+
+# Simulation setup
+units       real    
+atom_style  full
+boundary    p p p
+
+read_data   {{params.in_data}} nocoeff
+
+{% include input.potential_file %}
+
+{% if params.tail_correction == 1 %}
+# Long-range dispersion corrections for energy and pressure
+# Can affect constant-pressure dynamics
+pair_modify     tail yes
+{% endif %}
+
+neighbor       2.0 bin
+{% if params.neigh_modify ==1 %}
+neigh_modify   every 2 delay 10 check no
+{% endif %}
+neigh_modify   exclude molecule/intra water
+
+reset_timestep   0 
+
+{% if params.minimize == 1 %}
+min_style       sd
+minimize        0.0 0.0 1000 400000 ## 1000 steps
+timestep 0.001 # set to a small timestep to avoid large forces at 0 K ?
+thermo         100
+log            {{params.log_minimize}}
+min_style       cg # 
+minimize        0 0.0023 100000 400000 ## 0.0001eV/A = 0.0023061 kcal/(mol-A)
+{% endif %}
+
+{% if params.simulated_annealing == 1 %}
+# Simulated annealing
+# Heat it up first 
+reset_timestep    0
+# Make sure there is no overall drift velocity 
+velocity   all create {{params.anneal_highest_temp}} 4928459
+velocity   all zero linear
+log          {{params.log_anneal}}
+thermo_style    custom step temp pe etotal vol lx press 
+thermo_modify flush yes 
+fix            1 water shake 1e-6 20 0 b 1 a 1 t 1 2         # Shake algorithm; must come before NPT or NPH
+fix            2 all nvt temp {{params.anneal_highest_temp}} {{params.anneal_highest_temp}} $(100.0*dt) tchain 10
+timestep       1.0        # Timestep 1 fs
+thermo         1000
+run            {{params.n_iter_anneal_heating}} 
+unfix          1
+unfix          2
+# ------------------------------------------
+# Annealing process
+# ------------------------------------------
+reset_timestep    0
+thermo_style    custom step temp pe etotal vol lx press 
+thermo_modify flush yes 
+fix            1 water shake 1e-6 20 0 b 1 a 1 t 1 2         # Shake algorithm; must come before NPT or NPH
+fix            2 all nve 
+fix            3 all viscous {{params.viscous_gamma}} # 0.01 is good for 1 ns long run
+timestep       {{params.anneal_timestep}}        # Timestep 1 fs
+thermo         1000
+run            {{params.n_iter_anneal_cooling}} 
+unfix          1
+unfix          2
+unfix          3
+# ------------------------------------------
+{% endif %}
+
+{% if params.nvt_equil == 1 %}
+# Short NVT run
+# ------------------------------------------
+# Make sure there is no overall drift velocity 
+velocity   all create $t 4928459
+velocity   all zero linear
+reset_timestep    0
+log          {{params.log_nvt_equil}}
+thermo_style    custom step temp pe etotal vol lx press 
+thermo_modify flush yes 
+fix            1 water shake 1e-6 20 0 b 1 a 1 t 1 2         # Shake algorithm; must come before NPT or NPH
+fix            2 all nvt temp $t $t $(100.0*dt) tchain 10
+timestep       1.0        # Timestep 1 fs
+thermo         1000
+run            {{params.n_iter_nvt_equil}} 
+unfix          1
+unfix          2
+# ------------------------------------------
+{% endif %}
+
+{% if params.npt_equil == 1 %}
+# Short NPT run
+# ------------------------------------------
+# Make sure there is no overall drift velocity 
+velocity   all create $t 4928459
+velocity   all zero linear
+reset_timestep    0
+log          {{params.log_npt_equil}}
+thermo_style    custom step temp pe etotal vol lx press density
+thermo_modify flush yes 
+fix            1 water shake 1e-6 20 0 b 1 a 1 t 1 2         # Shake algorithm; must come before NPT or NPH
+fix            2 all npt temp $t $t $(100.0*dt) iso ${press} ${press} $(1000.0*dt) tchain 10
+timestep       1.0        # Timestep 1 fs
+thermo         1000
+run            {{params.n_iter_npt_equil}} 
+unfix          1
+unfix          2
+# ------------------------------------------
+{% endif %}
+
+{% if params.nvt == 1 %}
+# Production run
+reset_timestep 0
+log             {{params.log}}
+thermo_style    custom step time temp pe etotal vol lx press density fmax fnorm 
+thermo_modify flush yes 
+fix            1 water shake 1e-6 20 0 b 1 a 1 t 1 2         # Shake algorithm; must come before NPT or NPH
+fix            2 all nvt temp $t $t $({{params.tdamp}}*dt)
+timestep       {{params.dt}}
+thermo         {{params.thermo_freq}}
+{% if params.dump_group %}
+dump           1 {{params.dump_group}} custom {{params.dump_freq}} {{params.dumpfile}} id mol type x y z 
+{% else %}
+dump           1 all custom {{params.dump_freq}} {{params.dumpfile}} id mol type x y z 
+{% endif %} 
+dump_modify    1 sort id 
+restart        50000 restart/x.r.1 restart/x.r.2
+restart        {{params.restart_freq}} output/x.r
+run            {{params.n_iter}}
+unfix          1
+unfix          2
+undump         1
+{% endif %}
+
+{% if params.npt == 1 %}
+# Production run
+reset_timestep 0
+log             {{params.log}}
+thermo_style    custom step time temp pe etotal vol lx press density fmax fnorm 
+thermo_modify flush yes 
+fix            1 water shake 1e-6 20 0 b 1 a 1 t 1 2         # Shake algorithm; must come before NPT or NPH
+fix            2 all npt temp $t $t $({{params.tdamp}}*dt) iso ${press} ${press} $({{params.pdamp}}*dt) 
+timestep       {{params.dt}}
+thermo         {{params.thermo_freq}}
+{% if params.dump_group %}
+dump           1 {{params.dump_group}} custom {{params.dump_freq}} {{params.dumpfile}} id mol type x y z 
+{% else %}
+dump           1 all custom {{params.dump_freq}} {{params.dumpfile}} id mol type x y z 
+{% endif %}
+dump_modify    1 sort id 
+restart        50000 restart/x.r.1 restart/x.r.2
+restart        {{params.restart_freq}} output/x.r
+run            {{params.n_iter}}
+unfix          1
+unfix          2
+undump         1
+{% endif %}
+
+{% if params.nve == 1 %}
+# Production run
+reset_timestep 0
+log             {{params.log}}
+thermo_style    custom step time temp pe etotal vol lx press density fmax fnorm 
+thermo_modify flush yes 
+fix            1 water shake 1e-6 20 0 b 1 a 1 t 1 2         # Shake algorithm; must come before NPT or NPH
+fix            2 all nve
+timestep       {{params.dt}}
+thermo         {{params.thermo_freq}}
+{% if params.dump_group %}
+dump           1 {{params.dump_group}} custom {{params.dump_freq}} {{params.dumpfile}} id mol type x y z 
+{% else %}
+dump           1 all custom {{params.dump_freq}} {{params.dumpfile}} id mol type x y z 
+{% endif %}
+dump_modify    1 sort id 
+restart        50000 restart/x.r.1 restart/x.r.2
+restart        {{params.restart_freq}} output/x.r
+run            {{params.n_iter}}
+unfix          1
+unfix          2
+undump         1
+{% endif %}
+
+{% if params.viscosity_production == 1 %}
+# Production viscosity NVT run
+# I assume that it is already equilibrated 
+# or that you read in a LAMMPS data file with velocities
+# ------------------------------------------
+reset_timestep 0
+log             {{params.log_viscosity}}
+thermo_style    custom step time temp pe etotal press  
+thermo_modify flush yes 
+fix recenter all momentum 1 linear 1 1 1
+fix            1 water shake 1e-6 20 0 b 1 a 1 t 1 2         # Shake algorithm; must come before NPT or NPH
+fix            2 all nvt temp $t $t $({{params.tdamp}}*dt)
+timestep       {{params.dt_visc}}
+thermo         {{params.thermo_freq_visc}}
+# Stress tensor components 
+variable     pxy equal pxy
+variable     pxz equal pxz
+variable     pyz equal pyz
+variable     pxxpyy equal 0.5*(pxx-pyy)
+variable     pyypzz equal 0.5*(pyy-pzz)
+# File for the averaged tensor values 
+fix stressPrint all print {{params.stress_print_freq}} "${pxy} ${pxz} ${pyz} ${pxxpyy} ${pyypzz}" file {{params.stress_outfile}} screen no
+
+{% if params.unwrapped_traj == 1 %}
+# Write only water, can get the COM from diffusion coefficient calculations later 
+dump           1 water custom {{params.dump_freq}} {{params.dumpfile}} xu yu zu 
+dump_modify    1 sort id 
+{% endif %}
+restart        50000 restart/x.r.1 restart/x.r.2
+restart        {{params.restart_freq_visc}} output/x.r
+run            {{params.n_iter_visc}}
+unfix          1
+unfix          2
+unfix          stressPrint
+unfix          recenter
+{% if params.unwrapped_traj == 1 %}
+undump         1
+{% endif %}
+# ------------------------------------------
+{% endif %}
+
+write_data {{params.out_data}}

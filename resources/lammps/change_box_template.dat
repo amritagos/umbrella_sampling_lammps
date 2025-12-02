@@ -1,0 +1,55 @@
+shell mkdir output       # Folder for output data file
+shell mkdir logfile 
+
+# Define temperature and pressure parameters
+variable    t equal   {{params.t}}       # Temperature (K)
+
+# Simulation setup
+units       real    
+atom_style  full
+boundary    p p p
+
+read_data {{params.in_data}} nocoeff
+
+{% include input.potential_file %}
+
+{% if params.tail_correction == 1 %}
+# Long-range dispersion corrections for energy and pressure
+# Can affect constant-pressure dynamics
+pair_modify     tail yes
+{% endif %}
+
+neighbor       2.0 bin
+{% if params.neigh_modify ==1 %}
+neigh_modify   every 2 delay 10 check no
+{% endif %}
+{% if params.n_wat > 0  %}
+neigh_modify   exclude molecule/intra water
+{% endif %}
+
+# Change the box size 
+change_box all x final 0.0 {{params.new_box_length}} y final 0.0 {{params.new_box_length}} z final 0.0 {{params.new_box_length}} remap units box
+
+{% if params.n_wat == 0  %}
+dielectric 78.0
+{% endif %}
+
+{% if params.minimize is not none and params.minimize == 1 %}
+min_style       sd
+minimize        0.0 0.0 1000 400000 ## 1000 steps
+timestep 0.001 # set to a small timestep to avoid large forces at 0 K ?
+thermo         100
+log            {{params.log_minimize}}
+min_style       cg # 
+minimize        0 0.0023 100000 400000 ## 0.0001eV/A = 0.0023061 kcal/(mol-A)
+{% endif %}
+
+# NVT to get the right bond lengths  
+{% if params.n_wat > 0  %}
+fix            1 all shake 1e-6 20 0 b 1 a 1 t 1 2   # Shake algorithm; must come before NPT or NPH
+{% endif %}       
+fix            2 all nvt temp $t $t $(100.0*dt)
+timestep       0.001        # Timestep 1 fs
+run            1
+
+write_data {{params.out_data}}

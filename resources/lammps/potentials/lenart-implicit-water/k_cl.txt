@@ -1,0 +1,37 @@
+# ------------------------------------------------------------------------------
+### Implicit water potential with explicit ions ###
+# reference: 
+# https://pubs.aip.org/aip/jcp/article/126/4/044509/914220/Effective-potentials-for-1-1-electrolyte-solutions 
+pair_style  hybrid/overlay lj/cut/coul/long 10.0 coul/diel 10.0 gauss/cut 10.0 
+
+bond_style      harmonic
+angle_style     harmonic
+kspace_style    pppm 1e-6 # Default value from LAMMPS is 1e-4
+dielectric 78.0 # For explicit water, this is 1.0, but for implicit bulk water it must be set
+
+# K-K
+pair_coeff      1 1 lj/cut/coul/long 0.104408 3.07 # K-K
+
+# Cl-Cl
+pair_coeff      2 2 lj/cut/coul/long 0.234014 3.487 # Cl-Cl
+
+# K-Cl
+pair_coeff      1 2 lj/cut/coul/long 0.119923 3.361 # K-Cl
+pair_coeff      1 2 coul/diel 78.0 3.35	0.67 # K-Cl
+pair_coeff      1 2 gauss/cut 3.6763274 3.55 0.67 # K-Cl
+
+# -------------------------------------------------------------------------------
+# create groups ###
+group k        type 1
+group cl        type 2
+group ions      type 1 2 
+
+# Masses
+mass            1 39.0983  # K
+mass            2 35.453 # Cl
+
+## set charges - beside manually ###
+set group k charge    1.0
+set group cl charge    -1.0
+
+###########################################################################################################################################
