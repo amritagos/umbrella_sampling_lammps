@@ -13,3 +13,9 @@ lammps:
     #
   lmp_cmd: "lmp"
   template_file: ../../resources/lammps/template_lj.dat
+
+umbrella_sampling:
+  umbrella_spring_constant: 0.5 #  kcal/mol-˚A2
+  timestep: 2.0 # in fs 
+  discard_steps: 20000 # Discard these steps as the equilibration time during in the window
+  run_steps: 200000 # No. of production steps to run 

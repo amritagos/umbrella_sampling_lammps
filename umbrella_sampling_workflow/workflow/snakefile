@@ -40,6 +40,11 @@ rule all:
             results_dir=results_dir,
             sample=samples.index,
         ),
+        expand(
+            "{results_dir}/umbrella_sampling/{sample}/inp.dat",
+            results_dir=results_dir,
+            sample=samples.index,
+        ),
 
 
 # Rule for running a LAMMPS script that can be inherited from
@@ -117,7 +122,7 @@ use rule lammps_input as lammps_input_equil with:
         template=config["lammps"]["template_file"],
     params:
         equil=1,
-        template_folder=config["template_folder_common"]
+        template_folder=config["template_folder_common"],
     output:
         run_file=ensure("{results_dir}/equil/inp.dat", non_empty=True),
 
@@ -129,3 +134,32 @@ use rule lammps_run as lammps_run_equilibration with:
     threads: NUM_THREADS
     output:
         data="{results_dir}/equil/equilibrated.data",
+
+
+# --------------------------------
+
+# Umbrella sampling
+# Create the windows and run, starting from the equilibrated configuration
+
+
+# Create an input file for the umbrella window
+use rule lammps_input as lammps_input_umbrella with:
+    localrule: True
+    threads: 1
+    retries: 1  # for latency on clusters 
+    input:
+        template=config["lammps"]["template_file"],
+        data=rules.lammps_run_equilibration.output.data,
+    params:
+        umbrella_sampling=1,
+        in_data=Path(f"{results_dir}/equil/equilibrated.data").resolve(),
+        umbrella_spring_constant=config["umbrella_sampling"]["umbrella_spring_constant"],
+        umbrella_center=lambda wc: samples.loc[wc.sample, "umbrella_center"],
+        timestep=config["umbrella_sampling"]["timestep"],
+        discard_steps=config["umbrella_sampling"]["discard_steps"],
+        run_steps=config["umbrella_sampling"]["run_steps"],
+        template_folder=config["template_folder_common"],
+    output:
+        run_file=ensure(
+            "{results_dir}/umbrella_sampling/{sample}/inp.dat", non_empty=True
+        ),

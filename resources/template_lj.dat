@@ -57,4 +57,13 @@ write_data equilibrated.data nocoeff
 {% if params.umbrella_sampling  %}
 # Umbrella sampling 
 variable k equal {{params.umbrella_spring_constant}}
+variable xdes equal {{params.umbrella_center}}
+variable xave equal xcm(topull,x) # Collective variable 
+fix mytth topull spring tether ${k} ${xdes} 0 0 0 # Umbrella spring force applied 
+timestep {{params.timestep}}
+run {{params.discard_steps}}
+fix myat1 all ave/time 10 10 100 v_xave v_xdes file umbrella-sampling.${a}.dat # Time series: CV, xmin 
+run {{params.run_steps}}
+clear
+write_data system.data nocoeff
 {% endif %}
