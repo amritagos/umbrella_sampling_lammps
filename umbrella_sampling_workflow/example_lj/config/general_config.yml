@@ -1,0 +1,15 @@
+__use_yte__: true
+
+samples: config/test_samples.csv
+
+results_dir: results
+
+mpi_threads: 1 # can be overwritten from the commandline 
+
+template_folder_common: ../../resources # where Jinja2 templates are stored
+
+lammps:
+  source_cmd: |
+    #
+  lmp_cmd: "lmp"
+  template_file: ../../resources/lammps/template_lj.dat

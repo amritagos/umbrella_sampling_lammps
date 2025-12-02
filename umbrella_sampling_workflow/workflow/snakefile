@@ -1,0 +1,131 @@
+import pandas as pd
+from pathlib import Path
+from snakemake.utils import min_version
+
+
+configfile: "config/general_config.yml"  # Path to config file containing general variables, relative to the workflow folder
+
+
+# Load the sample data from the generated CSV file.
+# IMPORTANT: Make sure to generate the samples.csv file with the generate_samples.py script!
+samples = (
+    pd.read_csv(config["samples"], dtype={"sample_name": str})
+    .set_index("sample_name", drop=False)
+    .sort_index()
+)
+
+SAMPLES_IDX_START = int(config.get("samples_idx_start", 0))
+SAMPLES_IDX_END = int(config.get("samples_idx_end", len(samples)))
+
+print(f"{SAMPLES_IDX_START=}")
+print(f"{SAMPLES_IDX_END=}")
+
+samples = samples[SAMPLES_IDX_START:SAMPLES_IDX_END]
+
+NUM_THREADS = int(config["mpi_threads"])
+
+min_version("6.0")
+
+results_dir = config["results_dir"]
+
+source_cmd = config["lammps"]["source_cmd"]
+
+lmp = config["lammps"]["lmp_cmd"]
+
+
+rule all:
+    input:
+        expand(
+            "{results_dir}/equil/equilibrated.data",
+            results_dir=results_dir,
+            sample=samples.index,
+        ),
+
+
+# Rule for running a LAMMPS script that can be inherited from
+rule lammps_run:
+    input:
+        run_file=[],
+    resources:
+        cpus_per_task=1,
+        ntasks_per_node=NUM_THREADS,
+    threads: NUM_THREADS
+    output:
+        data=[],
+        out=[],
+    shell:
+        f"""
+        {source_cmd}
+        export OMP_NUM_THREADS={{resources.cpus_per_task}}
+        cd $( dirname {{input.run_file}})
+        mpirun -n {{resources.ntasks_per_node}} {lmp} -in inp.dat 
+        """
+
+
+# Create a LAMMPS input file
+rule lammps_input:
+    localrule: True
+    threads: 1
+    input:
+        template=[],
+        potential_file=[],
+    params:
+        "",
+    output:
+        run_file=[],
+    script:
+        workflow.source_path("scripts/render_jinja2.py")
+
+
+rule copy:
+    """
+    Copy multiple files into the output directory.
+    - Creates directory if missing
+    - Overwrites existing files (but keeps the directory)
+    """
+    localrule: True
+    input:
+        files=[],  # files to copy
+        deps=[],  # optional dependencies that aren’t copied
+    output:
+        outfile=[],
+    threads: 1
+    run:
+        import shutil
+        from pathlib import Path
+
+        outdir = Path(output.outfile).parent
+        outdir.mkdir(parents=True, exist_ok=True)
+
+        for f in input.files:
+            src = Path(f)
+            dst = outdir / src.name
+            shutil.copy2(src, dst)  # overwrite if exists
+            print(f"Copied {src} -> {dst}")
+
+
+# -----------------------------------
+# Equilibration
+
+
+# Create input file for equilibration
+use rule lammps_input as lammps_input_equil with:
+    localrule: True
+    threads: 1
+    retries: 1  # for latency on clusters 
+    input:
+        template=config["lammps"]["template_file"],
+    params:
+        equil=1,
+        template_folder=config["template_folder_common"]
+    output:
+        run_file=ensure("{results_dir}/equil/inp.dat", non_empty=True),
+
+
+# Run the equilibration
+use rule lammps_run as lammps_run_equilibration with:
+    input:
+        run_file=rules.lammps_input_equil.output.run_file,
+    threads: NUM_THREADS
+    output:
+        data="{results_dir}/equil/equilibrated.data",
