@@ -1,0 +1,27 @@
+name: fittingenv
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.10
+  - ase>=3.22.1
+  - numpy>=1.26.4
+  - scipy>=1.7.3
+  - ipython>=8.26.0
+  - pandas>=2.2.2
+  - ipykernel
+  - pytest
+  - pipx
+  - snakemake
+  - moltemplate
+  - packmol
+  - setuptools>=61.0
+  - matplotlib
+  - numba
+  - pip
+  - pip: 
+    - snakemake-executor-plugin-cluster-generic
+    - lammps-logfile
+    - toml
+    - tomli_w
+    - chemfit
