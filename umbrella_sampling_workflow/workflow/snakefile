@@ -1,6 +1,7 @@
 import pandas as pd
 from pathlib import Path
 from snakemake.utils import min_version
+import numpy as np
 
 
 configfile: "config/general_config.yml"  # Path to config file containing general variables, relative to the workflow folder
@@ -52,6 +53,10 @@ rule all:
         ),
         expand(
             "{results_dir}/wham_analysis/pmf.dat",
+            results_dir=results_dir,
+        ),
+        expand(
+            "{results_dir}/wham_analysis/pmf.png",
             results_dir=results_dir,
         ),
 
@@ -239,3 +244,29 @@ rule wham:
         f"""
         wham units {{params.units}} {{params.reaction_coordinate_min}} {{params.reaction_coordinate_max}} {{params.nbins}} {{params.tolerance}} {{params.temperature}} {{params.numpad}} {{input.wham_meta}} {{output.pmf}} > {{log}} 2>&1
         """
+
+
+umbrella_centers_sorted = [samples.loc[s, "umbrella_center"] for s in sorted_samples]
+
+
+rule plot_pmf:
+    localrule: True
+    threads: 1
+    input:
+        pmf=rules.wham.output.pmf,
+        time_series_paths=expand(
+            rules.lammps_run_umbrella.output.time_series,
+            results_dir=results_dir,
+            sample=sorted_samples,
+        ),
+    params:
+        abs_paths=lambda wc, input: [
+            str(Path(p).resolve()) for p in input.time_series_paths
+        ],
+        xmin_pmf_plot=np.min(umbrella_centers_sorted) - 20,
+        xmax_pmf_plot=np.max(umbrella_centers_sorted) + 20,
+    output:
+        histogram_plot="{results_dir}/wham_analysis/histograms.png",
+        pmf_plot="{results_dir}/wham_analysis/pmf.png",
+    script:
+        workflow.source_path("scripts/plot_pmf_histo.py")
