@@ -45,6 +45,15 @@ rule all:
             results_dir=results_dir,
             sample=samples.index,
         ),
+        expand(
+            "{results_dir}/umbrella_sampling/{sample}/system.data",
+            results_dir=results_dir,
+            sample=samples.index,
+        ),
+        expand(
+            "{results_dir}/wham_analysis/umbrella-sampling.meta",
+            results_dir=results_dir,
+        ),
 
 
 # Rule for running a LAMMPS script that can be inherited from
@@ -163,3 +172,45 @@ use rule lammps_input as lammps_input_umbrella with:
         run_file=ensure(
             "{results_dir}/umbrella_sampling/{sample}/inp.dat", non_empty=True
         ),
+
+
+# Run the equilibration
+use rule lammps_run as lammps_run_umbrella with:
+    input:
+        run_file=rules.lammps_input_umbrella.output.run_file,
+    threads: NUM_THREADS
+    output:
+        data="{results_dir}/umbrella_sampling/{sample}/system.data",
+        time_series="{results_dir}/umbrella_sampling/{sample}/umbrella-sampling.dat",
+
+
+# -------------------------
+# WHAM
+
+# sort samples by run_number
+sorted_samples = samples.sort_values("run_number").index
+
+
+# Create the meta file which will contain all the time series information
+rule create_wham_meta:
+    localrule: True
+    threads: 1
+    input:
+        time_series_paths=expand(
+            rules.lammps_run_umbrella.output.time_series,
+            results_dir=results_dir,
+            sample=sorted_samples,
+        ),
+    output:
+        wham_meta="{results_dir}/wham_analysis/umbrella-sampling.meta",
+    params:
+        abs_paths=lambda wc, input: [
+            str(Path(p).resolve()) for p in input.time_series_paths
+        ],
+        umbrella_centers=[samples.loc[s, "umbrella_center"] for s in sorted_samples],
+        spring_constants=[
+            config["umbrella_sampling"]["umbrella_spring_constant"]
+            for s in sorted_samples
+        ],
+    script:
+        workflow.source_path("scripts/create_meta.py")
