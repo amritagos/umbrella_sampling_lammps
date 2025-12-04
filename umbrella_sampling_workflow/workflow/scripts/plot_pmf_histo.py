@@ -143,7 +143,7 @@ def plot_pmf(
     output_wham = read_output_wham(infile)
 
     # Initialise figure
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(6, 4))
     color = np.array([0.267, 0.647, 0.761])
 
     # WHAM data
