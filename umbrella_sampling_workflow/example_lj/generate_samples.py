@@ -55,7 +55,7 @@ if __name__ == "__main__":
     sample_prefix_name = "window"
 
     # umbrella windows
-    num_windows = 20
+    num_windows = 25
     umbrella_min_start = (
         -28  # each window defines the minimum of the umbrella potential Å
     )

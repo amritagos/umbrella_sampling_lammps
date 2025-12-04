@@ -37,7 +37,7 @@ lmp = config["lammps"]["lmp_cmd"]
 rule all:
     input:
         expand(
-            "{results_dir}/equil/equilibrated.data",
+            "{results_dir}/equil/{sample}/equilibrated.data",
             results_dir=results_dir,
             sample=samples.index,
         ),
@@ -137,9 +137,12 @@ use rule lammps_input as lammps_input_equil with:
         template=config["lammps"]["template_file"],
     params:
         equil=1,
-        template_folder=config["template_folder_common"],
+        umbrella_center=lambda wc: samples.loc[wc.sample, "umbrella_center"],
+        seed=lambda wc: samples.loc[wc.sample, "run_number"],
+        run_steps=config["equilibration"]["run_steps"],
+        template_folder=f"{results_dir}/templates",
     output:
-        run_file=ensure("{results_dir}/equil/inp.dat", non_empty=True),
+        run_file=ensure("{results_dir}/equil/{sample}/inp.dat", non_empty=True),
 
 
 # Run the equilibration
@@ -148,7 +151,7 @@ use rule lammps_run as lammps_run_equilibration with:
         run_file=rules.lammps_input_equil.output.run_file,
     threads: NUM_THREADS
     output:
-        data="{results_dir}/equil/equilibrated.data",
+        data="{results_dir}/equil/{sample}/equilibrated.data",
 
 
 # --------------------------------
@@ -168,13 +171,14 @@ use rule lammps_input as lammps_input_umbrella with:
         data=rules.lammps_run_equilibration.output.data,
     params:
         umbrella_sampling=1,
-        in_data=Path(f"{results_dir}/equil/equilibrated.data").resolve(),
+        in_data=lambda wc, input: Path(input.data).resolve(),
         umbrella_spring_constant=config["umbrella_sampling"]["umbrella_spring_constant"],
         umbrella_center=lambda wc: samples.loc[wc.sample, "umbrella_center"],
         timestep=config["umbrella_sampling"]["timestep"],
         discard_steps=config["umbrella_sampling"]["discard_steps"],
         run_steps=config["umbrella_sampling"]["run_steps"],
-        template_folder=config["template_folder_common"],
+        seed=lambda wc: samples.loc[wc.sample, "run_number"],
+        template_folder=f"{results_dir}/templates",
     output:
         run_file=ensure(
             "{results_dir}/umbrella_sampling/{sample}/inp.dat", non_empty=True
