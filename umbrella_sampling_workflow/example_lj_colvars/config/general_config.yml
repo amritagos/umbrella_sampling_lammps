@@ -1,0 +1,22 @@
+__use_yte__: true
+
+samples: config/test_samples.csv
+
+results_dir: results
+
+mpi_threads: 1 # can be overwritten from the commandline 
+
+lammps:
+  source_cmd: |
+    #
+  lmp_cmd: "lmp"
+  template_file: ../../resources/lammps/template_lj.dat
+
+equilibration:
+  run_steps: 50000
+
+umbrella_sampling:
+  umbrella_spring_constant: 0.5 #  kcal/mol-˚A2
+  timestep: 2.0 # in fs 
+  discard_steps: 150000 # Discard these steps as the equilibration time during in the window
+  run_steps: 500000 # No. of production steps to run 
