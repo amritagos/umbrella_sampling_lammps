@@ -1,0 +1,41 @@
+# Global output
+colvarsTrajFrequency    10000
+colvarsRestartFrequency 10000
+analysis on
+
+# Collective variable: x-position of the pulled atom relative to origin
+colvar {
+  name xdist
+  width 0.1                # bin width in Å
+  lowerBoundary -50.0
+  upperBoundary  50.0
+
+  distanceZ {
+    # Project along x instead of z:
+    axis (1.0, 0.0, 0.0)
+
+    # Main group: the pulled atom (your type-2 atom)
+    # In your setup, "create_atoms 2 single ..." is called first,
+    # so that atom is ID 1. If it's different, change 1 accordingly.
+    main {
+      atomNumbers { 1 }
+    }
+
+    # Dummy reference point fixed at the origin (0,0,0)
+    ref {
+      dummyAtom (0.0, 0.0, 0.0)
+    }
+  }
+}
+
+# Harmonic umbrella, equivalent to:
+#   variable k equal 0.5
+#   variable xdes equal -21.0
+#   fix ... spring tether ${k} ${xdes} ...
+harmonic {
+  name umb
+  colvars xdist
+  centers -21.0            # umbrella center in Å
+  forceConstant 0.5        # kcal/mol/Å^2 (units real)
+  outputEnergy yes
+}
