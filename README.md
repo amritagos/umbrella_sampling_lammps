@@ -59,5 +59,5 @@ cd umbrella_sampling_workflow/example_lj
 snakemake --cores 1 --config mpi_threads=1 --snakefile ../workflow/snakefile --directory . -n
 ```
 
-If the DAG looks OK, you can run the 
+If the DAG looks OK, you can run the `snakemake` workflow using the latter command above (without the -n flag).
 
